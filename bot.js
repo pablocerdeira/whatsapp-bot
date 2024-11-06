@@ -17,8 +17,9 @@ client.on('ready', () => {
     console.log('Cliente pronto!');
 });
 
-client.on('message', async msg => {
-    const chatId = msg.from;
+// Captura todas as mensagens, incluindo as enviadas pelo próprio usuário
+client.on('message_create', async msg => {
+    const chatId = msg.fromMe ? msg.to : msg.from;
     const chatPath = path.join(BACKUP_PATH, chatId);
     const mediaPath = path.join(chatPath, 'media');
 
@@ -39,6 +40,7 @@ client.on('message', async msg => {
         author: msg.author || null,
         body: msg.body,
         type: msg.type,
+        fromMe: msg.fromMe, // Identifica se a mensagem foi enviada pelo próprio usuário
         hasMedia: msg.hasMedia || false
     };
 
@@ -82,7 +84,7 @@ client.on('message', async msg => {
     }
 });
 
-client.on('authenticated', (session) => {
+client.on('authenticated', () => {
     console.log('Sessão autenticada!');
 });
 
