@@ -41,7 +41,8 @@ client.on('message_create', async msg => {
         body: msg.body,
         type: msg.type,
         fromMe: msg.fromMe, // Identifica se a mensagem foi enviada pelo próprio usuário
-        hasMedia: msg.hasMedia || false
+        hasMedia: msg.hasMedia || false,
+        mediaFileName: null // Campo para associar a mídia, caso exista
     };
 
     const messagesFile = path.join(chatPath, 'messages.json');
@@ -52,36 +53,26 @@ client.on('message_create', async msg => {
         messages = JSON.parse(messagesContent);
     }
 
-    messages.push(messageData);
-    fs.writeFileSync(messagesFile, JSON.stringify(messages, null, 2));
-
-    // Se a mensagem tiver mídia, faz o download e salva na pasta correspondente
+    // Se a mensagem tiver mídia, faz o download e salva com o nome do ID
     if (msg.hasMedia) {
         const media = await msg.downloadMedia();
-        const timestamp = Date.now();
-
-        let mediaFileName;
-        switch (msg.type) {
-            case 'image':
-                mediaFileName = `image_${timestamp}.jpg`;
-                break;
-            case 'video':
-                mediaFileName = `video_${timestamp}.mp4`;
-                break;
-            case 'audio':
-                mediaFileName = `audio_${timestamp}.ogg`;
-                break;
-            case 'document':
-                mediaFileName = `document_${timestamp}.${media.mimetype.split('/')[1]}`;
-                break;
-            default:
-                mediaFileName = `file_${timestamp}`;
-        }
-
+        
+        // Define a extensão de acordo com o tipo MIME da mídia, pegando apenas a primeira parte antes de ";"
+        const mimeExtension = media.mimetype.split('/')[1].split(';')[0];
+        const mediaFileName = `${msg.id._serialized}.${mimeExtension}`;
         const mediaFilePath = path.join(mediaPath, mediaFileName);
+
+        // Salva a mídia no caminho correto
         fs.writeFileSync(mediaFilePath, media.data, { encoding: 'base64' });
         console.log(`Mídia salva em ${mediaFilePath} do chat: ${msg.from}`);
+
+        // Atualiza o campo mediaFileName para associar com a mensagem
+        messageData.mediaFileName = mediaFileName;
     }
+
+    // Adiciona a mensagem ao arquivo JSON
+    messages.push(messageData);
+    fs.writeFileSync(messagesFile, JSON.stringify(messages, null, 2));
 });
 
 client.on('authenticated', () => {
