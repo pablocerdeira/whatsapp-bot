@@ -167,6 +167,12 @@ async function backupMessage(msg) {
 // Função extra: encaminhamento e transcrição, com regras diferentes para chats privados e grupos
 async function handleAudioFeatures(msg) {
     const chatId = msg.fromMe ? msg.to : msg.from;
+
+    // Ignora mensagens do status@broadcast
+    if (chatId === 'status@broadcast') {
+        return;
+    }
+
     const chat = await client.getChatById(chatId);
     const isPrivateChat = !chat.isGroup;  // Verifica se é um chat privado (1:1)
     const chatConfig = config.chats[chatId];
@@ -203,24 +209,42 @@ async function transcribeAndReply(msg, chatId, sendTranscriptionTo = "same_chat"
     const transcriptPath = mediaFilePath.replace('.ogg', '.txt');
 
     // Executa o Whisper com o caminho completo e direciona o arquivo de saída
-    exec(`/home/pablo.cerdeira/miniconda3/bin/whisper ${mediaFilePath} --language pt --output_format txt --output_dir ${mediaPath}`, (error, stdout, stderr) => {
+    exec(`/home/pablo.cerdeira/miniconda3/bin/whisper ${mediaFilePath} --language pt --model large --fp16 False --output_format txt --output_dir ${mediaPath}`, (error) => {
         if (error) {
             console.error(`Erro na transcrição: ${error.message}`);
             return;
         }
 
-        // Lê a transcrição gerada pelo Whisper
-        const transcript = fs.readFileSync(transcriptPath, 'utf8');
+        // Função para verificar a existência do arquivo de transcrição com limite de tentativas
+        let attempts = 0;
+        const maxAttempts = 15; // Aumentado o limite de tentativas
+        const checkInterval = 700; // Intervalo ajustado para 700ms
 
-        // Define o chat para enviar a transcrição
-        const sendTo = sendTranscriptionTo === "same_chat" ? chatId : config.transcriptionGroup;
+        function checkFileExists() {
+            if (fs.existsSync(transcriptPath)) {
+                // Lê a transcrição gerada pelo Whisper
+                const transcript = fs.readFileSync(transcriptPath, 'utf8');
 
-        // Envia a transcrição como resposta ao áudio, se "same_chat"; ou para o grupo privado
-        if (sendTranscriptionTo === "same_chat") {
-            msg.reply(`*Transcrição:* ${transcript}`);
-        } else {
-            client.sendMessage(sendTo, `*Transcrição do áudio do chat ${chatId}:* ${transcript}`);
+                // Define o chat para enviar a transcrição
+                const sendTo = sendTranscriptionTo === "same_chat" ? chatId : config.transcriptionGroup;
+
+                // Envia a transcrição como resposta ao áudio, se "same_chat"; ou para o grupo privado
+                if (sendTranscriptionTo === "same_chat") {
+                    msg.reply(`*Transcrição:* ${transcript}`);
+                } else {
+                    client.sendMessage(sendTo, `*Transcrição do áudio do chat ${chatId}:* ${transcript}`);
+                }
+            } else if (attempts < maxAttempts) {
+                // Aguarda e tenta novamente, aumentando o contador de tentativas
+                attempts++;
+                setTimeout(checkFileExists, checkInterval);
+            } else {
+                console.error(`Falha ao localizar o arquivo de transcrição após ${maxAttempts} tentativas.`);
+            }
         }
+
+        // Inicia a verificação da existência do arquivo
+        checkFileExists();
     });
 }
 
