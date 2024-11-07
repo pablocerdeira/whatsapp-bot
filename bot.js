@@ -2,11 +2,23 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
+const pdfParse = require('pdf-parse');
+const mammoth = require('mammoth');
+const textract = require('textract');
 const { exec } = require('child_process');
+const { Configuration, OpenAIApi } = require('openai');
 
-let config = loadConfig();  // Carrega a configuração inicial
+require('dotenv').config();
+
+let config = loadConfig();
 const BACKUP_PATH = './whatsapp-backup/chats';
-const CHAT_NAMES_FILE = './whatsapp-backup/chat_names.json';  // Arquivo de dicionário para mapear IDs para nomes
+const CHAT_NAMES_FILE = './whatsapp-backup/chat_names.json';
+
+// Configuração correta da instância OpenAI
+const configuration = new Configuration({
+    apiKey: process.env.OPENAI_API_KEY
+});
+const openai = new OpenAIApi(configuration);
 
 const client = new Client({
     authStrategy: new LocalAuth({ clientId: "client-one" }),
@@ -32,8 +44,8 @@ client.on('qr', qr => {
 
 client.on('ready', async () => {
     console.log('Cliente pronto!');
-    watchConfigFile();  // Monitora o arquivo de configuração
-    loadChatNames();    // Carrega ou cria o dicionário de nomes de chats e usuários
+    watchConfigFile();
+    loadChatNames();
 });
 
 // Função para carregar configurações
@@ -189,7 +201,7 @@ async function handleAudioFeatures(msg) {
     }
 
     // Encaminha o áudio para o grupo de transcrição, se configurado no config.json (para grupos apenas)
-    if (chatConfig && chatConfig.sendAudioToTranscriptGroup) {
+    if (chatConfig && chatConfig.sendAudioToTranscriptGroup && msg.type === 'ptt') {
         const media = await msg.downloadMedia();
         client.sendMessage(config.transcriptionGroup, media, { caption: 'Áudio encaminhado automaticamente' });
     }
@@ -209,7 +221,7 @@ async function transcribeAndReply(msg, chatId, sendTranscriptionTo = "same_chat"
     const transcriptPath = mediaFilePath.replace('.ogg', '.txt');
 
     // Executa o Whisper com o caminho completo e direciona o arquivo de saída
-    exec(`/home/pablo.cerdeira/miniconda3/bin/whisper ${mediaFilePath} --language pt --model large --fp16 False --output_format txt --output_dir ${mediaPath}`, (error) => {
+    exec(`/home/pablo.cerdeira/miniconda3/bin/whisper ${mediaFilePath} --language pt --output_format txt --output_dir ${mediaPath}`, (error) => {
         if (error) {
             console.error(`Erro na transcrição: ${error.message}`);
             return;
@@ -248,10 +260,87 @@ async function transcribeAndReply(msg, chatId, sendTranscriptionTo = "same_chat"
     });
 }
 
+// Função para processar documentos e gerar resumo
+async function handleDocumentFeatures(msg) {
+    const chatId = msg.fromMe ? msg.to : msg.from;
+    const chat = await client.getChatById(chatId);
+    const isPrivateChat = !chat.isGroup;
+    const chatConfig = config.chats[chatId];
+
+    // Verifica se é um documento PDF, DOC ou DOCX
+    if (msg.hasMedia && ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'].includes(msg._data.mimetype)) {
+        const media = await msg.downloadMedia();
+        const filePath = path.join(BACKUP_PATH, chatId, 'media', `${msg.id._serialized}.${media.mimetype.split('/')[1]}`);
+        
+        // Salva o documento temporariamente
+        fs.writeFileSync(filePath, media.data, { encoding: 'base64' });
+
+        let textContent;
+        try {
+            if (media.mimetype === 'application/pdf') {
+                const data = await pdfParse(fs.readFileSync(filePath));
+                textContent = data.text;
+            } else if (media.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+                const result = await mammoth.extractRawText({ path: filePath });
+                textContent = result.value;
+            } else if (media.mimetype === 'application/msword') {
+                textContent = await new Promise((resolve, reject) => {
+                    textract.fromFileWithPath(filePath, (error, text) => {
+                        if (error) reject(error);
+                        else resolve(text);
+                    });
+                });
+            }
+        } catch (error) {
+            console.error(`Erro ao extrair texto do documento: ${error.message}`);
+            return;
+        }
+
+        // Configurações para resumos em conversas privadas e grupos
+        const shouldSummarize = isPrivateChat || (chatConfig && chatConfig.summarizeDocuments);
+        if (shouldSummarize) {
+            const summary = await generateSummary(textContent);
+            if (summary) {
+                msg.reply(`*Resumo do documento:* ${summary}`);
+            }
+        }
+    }
+}
+
+// Função para gerar resumo usando OpenAI
+async function generateSummary(text) {
+    let attempts = 0;
+    const maxAttempts = 5;
+    const backoffDelay = 2000; // 2 segundos para começar, aumentando exponencialmente
+
+    while (attempts < maxAttempts) {
+        try {
+            const response = await openai.createChatCompletion({
+                model: "gpt-4o-mini",
+                messages: [{ role: "user", content: `Faça um resumo breve e objetivo do seguinte texto, com no máximo 800 palavras, indicando também do que se trata e seus objetivos. Nunca use a palavra RESUMO em sua resposta: ${text}` }],
+                max_tokens: 800
+            });
+            return response.data.choices[0].message.content.trim();
+        } catch (error) {
+            if (error.response && error.response.status === 429) {
+                console.warn(`Rate limit exceeded. Tentativa ${attempts + 1} de ${maxAttempts}. Esperando ${backoffDelay / 1000} segundos antes de tentar novamente...`);
+                await new Promise(resolve => setTimeout(resolve, backoffDelay * (2 ** attempts))); // Exponential backoff
+                attempts++;
+            } else {
+                console.error(`Erro ao gerar resumo com OpenAI: ${error.message}`);
+                return null;
+            }
+        }
+    }
+    console.error("Máximo de tentativas atingido. Não foi possível gerar o resumo.");
+    return null;
+}
+
 // Captura todas as mensagens, realiza backup e, para áudios, executa funções extras se configuradas
 client.on('message_create', async msg => {
     await backupMessage(msg);        // Realiza o backup de todas as mensagens
     await handleAudioFeatures(msg);   // Executa funções extras para áudios, se configuradas
+    await handleDocumentFeatures(msg); // Resumo de documentos
 });
 
 client.on('authenticated', () => {
