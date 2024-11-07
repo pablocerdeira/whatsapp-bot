@@ -1,0 +1,14 @@
+{
+    "transcriptionGroup": "seu-id-para-receber-transcricoes-de-forma-privada",
+    "chats": {
+        "group-id-1": {
+            "transcribeAudio": true,
+            "sendAudioToTranscriptGroup": true,
+            "sendTranscriptionTo": "same_chat",
+            "summarizeDocuments": true
+        },
+        "group-id-2": {
+            "summarizeDocuments": true
+        }
+    }
+}
