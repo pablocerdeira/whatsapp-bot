@@ -141,15 +141,23 @@ async function backupMessage(msg) {
         mediaFileName: null  // Será atualizado se houver mídia associada
     };
 
-    // Se a mensagem tiver mídia, salva a mídia no diretório correspondente
+    // Se a mensagem tiver mídia, tenta fazer o download e salvar
     if (msg.hasMedia) {
-        const media = await msg.downloadMedia();
-        const mimeExtension = media.mimetype.split('/')[1].split(';')[0];
-        const mediaFileName = `${msg.id._serialized}.${mimeExtension}`;
-        const mediaFilePath = path.join(mediaPath, mediaFileName);
-        fs.writeFileSync(mediaFilePath, media.data, { encoding: 'base64' });
-        console.log(`Mídia salva em ${mediaFilePath} do chat: ${chatId}`);
-        messageData.mediaFileName = mediaFileName;
+        try {
+            const media = await msg.downloadMedia();
+            if (media && media.mimetype) {  // Verifica se media e mimetype estão definidos
+                const mimeExtension = media.mimetype.split('/')[1].split(';')[0];
+                const mediaFileName = `${msg.id._serialized}.${mimeExtension}`;
+                const mediaFilePath = path.join(mediaPath, mediaFileName);
+                fs.writeFileSync(mediaFilePath, media.data, { encoding: 'base64' });
+                console.log(`Mídia salva em ${mediaFilePath} do chat: ${chatId}`);
+                messageData.mediaFileName = mediaFileName;
+            } else {
+                console.warn(`Falha ao baixar mídia para a mensagem: ${msg.id._serialized}`);
+            }
+        } catch (error) {
+            console.error(`Erro ao fazer download da mídia: ${error.message}`);
+        }
     }
 
     // Salva os dados da mensagem no arquivo JSON do backup
