@@ -1,5 +1,5 @@
 {
-    "transcriptionGroup": "seu-id-para-receber-transcricoes-de-forma-privada",
+    "transcriptionGroup": "seu-id-o-de-um-grupo-seu-para-receber-transcricoes-de-forma-privada",
     "chats": {
         "group-id-1": {
             "transcribeAudio": true,
