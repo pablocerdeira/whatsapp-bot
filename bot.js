@@ -5,20 +5,35 @@ const path = require('path');
 const { exec } = require('child_process');
 
 let config = loadConfig();  // Carrega a configuração inicial
-
 const BACKUP_PATH = './whatsapp-backup/chats';
+const CHAT_NAMES_FILE = './whatsapp-backup/chat_names.json';  // Arquivo de dicionário para mapear IDs para nomes
 
 const client = new Client({
-    authStrategy: new LocalAuth({ clientId: "client-one" })
+    authStrategy: new LocalAuth({ clientId: "client-one" }),
+    puppeteer: {
+        headless: true,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu'
+        ],
+        timeout: 60000
+    }
 });
 
 client.on('qr', qr => {
     qrcode.generate(qr, { small: true });
 });
 
-client.on('ready', () => {
+client.on('ready', async () => {
     console.log('Cliente pronto!');
     watchConfigFile();  // Monitora o arquivo de configuração
+    loadChatNames();    // Carrega ou cria o dicionário de nomes de chats e usuários
 });
 
 // Função para carregar configurações
@@ -38,6 +53,42 @@ function watchConfigFile() {
         console.log('Arquivo de configuração atualizado. Recarregando...');
         config = loadConfig();  // Recarrega as configurações
     });
+}
+
+// Função para carregar ou inicializar o dicionário de nomes de chats e usuários
+function loadChatNames() {
+    if (!fs.existsSync(CHAT_NAMES_FILE)) {
+        fs.writeFileSync(CHAT_NAMES_FILE, JSON.stringify({ chats: {}, users: {} }), 'utf8');
+    }
+}
+
+// Função para atualizar o nome do chat no dicionário, verificando se o nome mudou
+async function updateChatName(chatId) {
+    const chatNames = JSON.parse(fs.readFileSync(CHAT_NAMES_FILE, 'utf8'));
+    const chat = await client.getChatById(chatId);
+    const currentChatName = chat.isGroup ? chat.name : (chat.contact?.pushname || chat.contact?.name || chatId);
+
+    // Atualiza o nome apenas se ele mudou
+    if (chatNames.chats[chatId] !== currentChatName) {
+        chatNames.chats[chatId] = currentChatName;
+        fs.writeFileSync(CHAT_NAMES_FILE, JSON.stringify(chatNames, null, 2), 'utf8');
+        console.log(`Nome do chat atualizado no dicionário: ${currentChatName} (ID: ${chatId})`);
+    }
+}
+
+// Função para atualizar o nome do usuário no dicionário
+async function updateUserName(userId) {
+    const chatNames = JSON.parse(fs.readFileSync(CHAT_NAMES_FILE, 'utf8'));
+    if (!chatNames.users[userId]) {
+        try {
+            const contact = await client.getContactById(userId);
+            const userName = contact.pushname || contact.name || userId;
+            chatNames.users[userId] = userName;
+            fs.writeFileSync(CHAT_NAMES_FILE, JSON.stringify(chatNames, null, 2), 'utf8');
+        } catch {
+            console.error(`Não foi possível obter o nome do usuário para ID: ${userId}`);
+        }
+    }
 }
 
 // Função para salvar a mensagem no arquivo JSON do chat
@@ -60,6 +111,10 @@ async function backupMessage(msg) {
     const chatPath = path.join(BACKUP_PATH, chatId);
     const mediaPath = path.join(chatPath, 'media');
 
+    // Atualiza o dicionário de nomes de chats e usuários
+    await updateChatName(chatId);
+    if (msg.author) await updateUserName(msg.author);
+
     // Verifica e cria as pastas do chat e de mídia, se necessário
     if (!fs.existsSync(chatPath)) {
         fs.mkdirSync(chatPath, { recursive: true });
@@ -68,6 +123,9 @@ async function backupMessage(msg) {
         fs.mkdirSync(mediaPath, { recursive: true });
     }
 
+    // Obtém o nome do autor
+    const authorName = msg.author ? (await client.getContactById(msg.author)).pushname || msg.author : null;
+
     // Cria o objeto de dados da mensagem
     const messageData = {
         id: msg.id._serialized,
@@ -75,6 +133,7 @@ async function backupMessage(msg) {
         from: msg.from,
         to: msg.to,
         author: msg.author || null,
+        authorName: authorName,  // Adiciona o nome do autor
         body: msg.body || null,
         type: msg.type,
         fromMe: msg.fromMe,
@@ -89,7 +148,7 @@ async function backupMessage(msg) {
         const mediaFileName = `${msg.id._serialized}.${mimeExtension}`;
         const mediaFilePath = path.join(mediaPath, mediaFileName);
         fs.writeFileSync(mediaFilePath, media.data, { encoding: 'base64' });
-        console.log(`Mídia salva em ${mediaFilePath} do chat: ${msg.from}`);
+        console.log(`Mídia salva em ${mediaFilePath} do chat: ${chatId}`);
         messageData.mediaFileName = mediaFileName;
     }
 
@@ -113,15 +172,11 @@ async function handleAudioFeatures(msg) {
 
     // Transcrição do áudio, se configurado
     if (chatConfig.transcribeAudio) {
-        const chatPath = path.join(BACKUP_PATH, chatId);
-        const mediaPath = path.join(chatPath, 'media');
-        const media = await msg.downloadMedia();
-        const mimeExtension = media.mimetype.split('/')[1].split(';')[0];
-        const mediaFileName = `${msg.id._serialized}.${mimeExtension}`;
-        const mediaFilePath = path.join(mediaPath, mediaFileName);
+        const mediaPath = path.join(BACKUP_PATH, chatId, 'media');
+        const mediaFilePath = path.join(mediaPath, `${msg.id._serialized}.ogg`);
         
         // Caminho de saída da transcrição
-        const transcriptPath = mediaFilePath.replace(`.${mimeExtension}`, '.txt');
+        const transcriptPath = mediaFilePath.replace('.ogg', '.txt');
         
         // Executa o Whisper com o caminho completo e direciona o arquivo de saída
         exec(`/home/pablo.cerdeira/miniconda3/bin/whisper ${mediaFilePath} --language pt --output_format txt --output_dir ${mediaPath}`, (error, stdout, stderr) => {
