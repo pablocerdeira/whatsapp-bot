@@ -19,8 +19,10 @@ Este projeto é um bot para WhatsApp que realiza o backup de mensagens, transcri
 - Conta de desenvolvedor na OpenAI para uso da API GPT-4
 - Biblioteca Whisper instalada (para transcrição de áudios)
 - Pacotes adicionais para manipulação de documentos e transcrição:
+
   ```bash
   npm install whatsapp-web.js qrcode-terminal fs path child_process pdf-parse mammoth textract openai
+  ```
 
 ## Instalação
 
