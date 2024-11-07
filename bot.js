@@ -160,8 +160,16 @@ async function backupMessage(msg) {
 async function handleAudioFeatures(msg) {
     const chatId = msg.fromMe ? msg.to : msg.from;
     const chatConfig = config.chats[chatId];
+
+    // Transcrever todos os áudios enviados por você (independente da configuração no config.json)
+    if (msg.fromMe && msg.type === 'ptt' && msg.hasMedia) {
+        await transcribeAndReply(msg, chatId);
+        return;
+    }
+
+    // Verifica configurações extras para áudios recebidos de outros (apenas se o chat tiver configuração específica)
     if (!chatConfig || msg.type !== 'ptt' || !msg.hasMedia) {
-        return;  // Apenas processa áudios (ptt) de chats com configuração extra
+        return;  // Apenas processa áudios (ptt) de chats com configuração extra, se não forem enviados por você
     }
 
     // Encaminha o áudio para o grupo de transcrição, se configurado
@@ -170,35 +178,40 @@ async function handleAudioFeatures(msg) {
         client.sendMessage(config.transcriptionGroup, media, { caption: 'Áudio encaminhado automaticamente' });
     }
 
-    // Transcrição do áudio, se configurado
+    // Transcrição do áudio, se configurado no config.json
     if (chatConfig.transcribeAudio) {
-        const mediaPath = path.join(BACKUP_PATH, chatId, 'media');
-        const mediaFilePath = path.join(mediaPath, `${msg.id._serialized}.ogg`);
-        
-        // Caminho de saída da transcrição
-        const transcriptPath = mediaFilePath.replace('.ogg', '.txt');
-        
-        // Executa o Whisper com o caminho completo e direciona o arquivo de saída
-        exec(`/home/pablo.cerdeira/miniconda3/bin/whisper ${mediaFilePath} --language pt --output_format txt --output_dir ${mediaPath}`, (error, stdout, stderr) => {
-            if (error) {
-                console.error(`Erro na transcrição: ${error.message}`);
-                return;
-            }
-
-            // Lê a transcrição gerada pelo Whisper
-            const transcript = fs.readFileSync(transcriptPath, 'utf8');
-
-            // Define o chat para enviar a transcrição
-            const sendTo = chatConfig.sendTranscriptionTo === "same_chat" ? chatId : config.transcriptionGroup;
-
-            // Envia a transcrição como resposta ao áudio, se "same_chat"; ou para o grupo privado
-            if (chatConfig.sendTranscriptionTo === "same_chat") {
-                msg.reply(`*Transcrição:* ${transcript}`);
-            } else {
-                client.sendMessage(sendTo, `*Transcrição do áudio do chat ${chatId}:* ${transcript}`);
-            }
-        });
+        await transcribeAndReply(msg, chatId, chatConfig.sendTranscriptionTo);
     }
+}
+
+// Função para transcrever áudio e responder com a transcrição
+async function transcribeAndReply(msg, chatId, sendTranscriptionTo = "same_chat") {
+    const mediaPath = path.join(BACKUP_PATH, chatId, 'media');
+    const mediaFilePath = path.join(mediaPath, `${msg.id._serialized}.ogg`);
+
+    // Caminho de saída da transcrição
+    const transcriptPath = mediaFilePath.replace('.ogg', '.txt');
+
+    // Executa o Whisper com o caminho completo e direciona o arquivo de saída
+    exec(`/home/pablo.cerdeira/miniconda3/bin/whisper ${mediaFilePath} --language pt --output_format txt --output_dir ${mediaPath}`, (error, stdout, stderr) => {
+        if (error) {
+            console.error(`Erro na transcrição: ${error.message}`);
+            return;
+        }
+
+        // Lê a transcrição gerada pelo Whisper
+        const transcript = fs.readFileSync(transcriptPath, 'utf8');
+
+        // Define o chat para enviar a transcrição
+        const sendTo = sendTranscriptionTo === "same_chat" ? chatId : config.transcriptionGroup;
+
+        // Envia a transcrição como resposta ao áudio, se "same_chat"; ou para o grupo privado
+        if (sendTranscriptionTo === "same_chat") {
+            msg.reply(`*Transcrição:* ${transcript}`);
+        } else {
+            client.sendMessage(sendTo, `*Transcrição do áudio do chat ${chatId}:* ${transcript}`);
+        }
+    });
 }
 
 // Captura todas as mensagens, realiza backup e, para áudios, executa funções extras se configuradas
