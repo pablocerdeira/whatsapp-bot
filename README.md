@@ -40,6 +40,7 @@ npm install
 ```
 
 3.	Configure a chave da API da OpenAI:
+
 	•	Crie um arquivo .env na raiz do projeto e adicione a chave da API da OpenAI:
 
 ```
