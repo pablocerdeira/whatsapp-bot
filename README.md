@@ -58,9 +58,11 @@ node bot.js
 ## Estrutura de Diretórios
 
 O bot cria uma estrutura de diretórios para armazenar as mensagens e mídias recebidas:
-	•	whatsapp-backup: Diretório principal de backup.
-	•	chats: Contém subpastas para cada chat ou grupo, organizadas por ID do chat.
-	•	media: Dentro de cada chat, uma pasta media armazena todos os arquivos de mídia.
+•	whatsapp-backup: Diretório principal de backup.
+
+•	chats: Contém subpastas para cada chat ou grupo, organizadas por ID do chat.
+
+•	media: Dentro de cada chat, uma pasta media armazena todos os arquivos de mídia.
 
 ### Configuração (config.json)
 
@@ -82,35 +84,45 @@ Exemplo de um arquivo config.json:
 ```
 Opções de Configuração para Cada Chat
 
-	•	transcribeAudio: Define se o áudio deve ser transcrito automaticamente.
-	•	sendAudioToTranscriptGroup: Encaminha o áudio para um grupo específico para transcrições.
-	•	sendTranscriptionTo: Define onde enviar a transcrição (same_chat para o mesmo chat, ou transcriptionGroup para o grupo de transcrições).
-	•	summarizeDocuments: Define se os documentos devem ser resumidos.
+•	transcribeAudio: Define se o áudio deve ser transcrito automaticamente.
+
+•	sendAudioToTranscriptGroup: Encaminha o áudio para um grupo específico para transcrições.
+
+•	sendTranscriptionTo: Define onde enviar a transcrição (same_chat para o mesmo chat, ou transcriptionGroup para o grupo de transcrições).
+
+•	summarizeDocuments: Define se os documentos devem ser resumidos.
 
 ## Funcionalidades do Código
 
 ### Backup de Mensagens
 
-	•	Todas as mensagens recebidas são salvas em arquivos .json, mantendo um histórico de mensagens para cada chat ou grupo.
-	•	Mídias são armazenadas em uma subpasta media.
+•	Todas as mensagens recebidas são salvas em arquivos .json, mantendo um histórico de mensagens para cada chat ou grupo.
+
+•	Mídias são armazenadas em uma subpasta media.
 
 ### Transcrição Automática de Áudios
 
-	•	Utiliza Whisper para realizar a transcrição de arquivos .ogg.
-	•	Em chats privados, o áudio é transcrito e enviado de volta ao mesmo chat.
-	•	Em grupos, o áudio só é transcrito se configurado no config.json.
+•	Utiliza Whisper para realizar a transcrição de arquivos .ogg.
+
+•	Em chats privados, o áudio é transcrito e enviado de volta ao mesmo chat.
+
+•	Em grupos, o áudio só é transcrito se configurado no config.json.
 
 ### Resumo Automático de Documentos
 
-	•	Suporta arquivos PDF, DOC e DOCX.
-	•	Utiliza a API da OpenAI para gerar um resumo objetivo do conteúdo.
-	•	Em chats privados, resume automaticamente todos os documentos.
-	•	Em grupos, resume apenas se configurado.
+•	Suporta arquivos PDF, DOC e DOCX.
+
+•	Utiliza a API da OpenAI para gerar um resumo objetivo do conteúdo.
+
+•	Em chats privados, resume automaticamente todos os documentos.
+
+•	Em grupos, resume apenas se configurado.
 
 ### Tratamento de Erros
 
-	•	Tentativas de Transcrição: Para garantir que o arquivo de transcrição foi gerado, o código verifica sua existência e limita o número de tentativas.
-	•	Ignora Status do WhatsApp: O bot ignora automaticamente mensagens do status@broadcast para evitar transcrições desnecessárias.
+•	Tentativas de Transcrição: Para garantir que o arquivo de transcrição foi gerado, o código verifica sua existência e limita o número de tentativas.
+
+•	Ignora Status do WhatsApp: O bot ignora automaticamente mensagens do status@broadcast para evitar transcrições desnecessárias.
 
 ## Contribuições
 
