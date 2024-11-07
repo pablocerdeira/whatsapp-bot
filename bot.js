@@ -164,30 +164,32 @@ async function backupMessage(msg) {
     saveMessageToFile(chatPath, messageData);
 }
 
-// Função extra: encaminhamento e transcrição, se configurado
+// Função extra: encaminhamento e transcrição, com regras diferentes para chats privados e grupos
 async function handleAudioFeatures(msg) {
     const chatId = msg.fromMe ? msg.to : msg.from;
+    const chat = await client.getChatById(chatId);
+    const isPrivateChat = !chat.isGroup;  // Verifica se é um chat privado (1:1)
     const chatConfig = config.chats[chatId];
 
-    // Transcrever todos os áudios enviados por você (independente da configuração no config.json)
-    if (msg.fromMe && msg.type === 'ptt' && msg.hasMedia) {
-        await transcribeAndReply(msg, chatId);
+    // Transcrição automática para todos os chats privados
+    if (isPrivateChat && msg.type === 'ptt' && msg.hasMedia) {
+        await transcribeAndReply(msg, chatId, "same_chat");  // Transcreve e responde no mesmo chat
         return;
     }
 
-    // Verifica configurações extras para áudios recebidos de outros (apenas se o chat tiver configuração específica)
-    if (!chatConfig || msg.type !== 'ptt' || !msg.hasMedia) {
-        return;  // Apenas processa áudios (ptt) de chats com configuração extra, se não forem enviados por você
+    // Para grupos, verifica configurações extras para áudios recebidos de outros (apenas se o grupo tiver configuração específica)
+    if (!isPrivateChat && (!chatConfig || msg.type !== 'ptt' || !msg.hasMedia)) {
+        return;  // Apenas processa áudios (ptt) de grupos com configuração extra
     }
 
-    // Encaminha o áudio para o grupo de transcrição, se configurado
-    if (chatConfig.sendAudioToTranscriptGroup) {
+    // Encaminha o áudio para o grupo de transcrição, se configurado no config.json (para grupos apenas)
+    if (chatConfig && chatConfig.sendAudioToTranscriptGroup) {
         const media = await msg.downloadMedia();
         client.sendMessage(config.transcriptionGroup, media, { caption: 'Áudio encaminhado automaticamente' });
     }
 
-    // Transcrição do áudio, se configurado no config.json
-    if (chatConfig.transcribeAudio) {
+    // Transcrição do áudio para grupos, se configurado no config.json
+    if (chatConfig && chatConfig.transcribeAudio) {
         await transcribeAndReply(msg, chatId, chatConfig.sendTranscriptionTo);
     }
 }
