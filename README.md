@@ -22,25 +22,30 @@ Este projeto é um bot para WhatsApp que realiza o backup de mensagens, transcri
   ```bash
   npm install whatsapp-web.js qrcode-terminal fs path child_process pdf-parse mammoth textract openai
 
-Instalação
+## Instalação
+
 	1.	Clone o repositório:
 ```
 git clone https://github.com/pablocerdeira/whatsapp-bot
 cd whatsapp-bot
 ```
+
 	2.	Instale as dependências:
 ```
 npm install
 ```
+
 	3.	Configure a chave da API da OpenAI:
 	•	Crie um arquivo .env na raiz do projeto e adicione a chave da API da OpenAI:
 ```
 OPENAI_API_KEY=YOUR_OPENAI_API_KEY
 ```
+
 	4.	Execute o bot:
 ```
 node bot.js
 ```
+
 	5.	Escaneie o QR Code exibido no terminal para autenticar o bot no WhatsApp Web.
 
 ## Estrutura de Diretórios
