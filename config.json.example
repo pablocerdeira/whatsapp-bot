@@ -1,4 +1,12 @@
 {
+    "service": "ollama",
+    "openai": {
+        "model": "gpt-4o-mini"
+    },
+    "ollama": {
+        "model": "llama3.2:latest",
+        "base_url": "http://localhost:11434"
+    },
     "whisperPath": "/home/[your-path-to-whisper-binary]/bin/whisper",
     "transcriptionGroup": "[your-user-or-grupo-to-send-transcriptions-if-not-same_chat]",
     "chats": {

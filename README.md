@@ -1,131 +1,126 @@
+
 # WhatsApp Bot with AI-Powered Transcription and Document Summarization
 
-This project is an advanced WhatsApp bot that brings Artificial Intelligence capabilities to your chats. It automatically backs up messages, transcribes audio files using Whisper, and summarizes documents with the OpenAI API, making your WhatsApp experience more efficient and productive.
+This project is an advanced WhatsApp bot that leverages artificial intelligence for automated audio transcription and document summarization. It uses Whisper for transcription and offers a choice between OpenAI's API and the Ollama local model for document summarization.
 
-## Features
+## Key Features
 
-- **Message Backup**: Stores all received messages, including text, audio, images, and other media types.
+- **Message Backup**: Automatically saves all received messages, including text, audio, images, and other media.
 - **AI-Powered Audio Transcription**:
-  - In **private chats**, automatically transcribes all audio messages and replies in the same chat.
-  - In **groups**, transcribes only if configured in the `config.json` file.
+  - In **private chats**, it transcribes all audio messages automatically and replies in the same chat.
+  - In **groups**, transcription is performed only if enabled in the `config.json` file.
 - **AI-Powered Document Summarization (PDF, DOC, DOCX)**:
-  - In **private chats**, summarizes documents automatically and replies with the summary.
-  - In **groups**, summarizes documents only if configured in `config.json`.
-- **Customizable Configuration**: Use `config.json` to define specific settings for each group or chat.
+  - In **private chats**, it summarizes documents automatically and replies with the summary.
+  - In **groups**, summarization is performed only if enabled in the `config.json` file.
+- **Configurable Options**: Use `config.json` to define specific settings for each group and choose between using OpenAI's API or the local Ollama model.
 
 ## Requirements
 
 - Node.js (version 16 or higher)
-- OpenAI developer account for GPT-4 API access
-- Whisper library installed (for audio transcription)
-- Additional packages for document processing and transcription:
+- An OpenAI developer account for using the GPT-4 API
+- Ollama installed locally for using the Llama model
+- Whisper installed for audio transcription
+- Additional packages for document processing and API requests:
 
-```
-npm install whatsapp-web.js qrcode-terminal fs path child_process pdf-parse mammoth textract openai dotenv
+```bash
+npm install whatsapp-web.js qrcode-terminal fs path child_process pdf-parse mammoth textract openai axios
 ```
 
 ## Installation
 
 1. Clone the repository:
 
-```
+```bash
 git clone https://github.com/pablocerdeira/whatsapp-bot
 cd whatsapp-bot
 ```
 
-2. Install dependencies:
+2. Install the dependencies:
 
-```
+```bash
 npm install
 ```
 
-3. Configure your OpenAI API key:
+3. Configure your API keys:
 
-- Create a `.env` file in the root of the project and add your OpenAI API key:
+Create a `.env` file in the project root and add your OpenAI API key:
 
-```
+```bash
 OPENAI_API_KEY=YOUR_OPENAI_API_KEY
 ```
 
-4. Run the bot:
+4. Set up the configuration file:
 
-```
+Refer to the `config.json.example` for setting your preferences:
+
+- Choose between OpenAI (`service: "openai"`) or Ollama (`service: "ollama"`) for document summarization.
+- Set the model and base URL for Ollama if using it locally.
+
+5. Run the bot:
+
+```bash
 node bot.js
 ```
 
-5. Scan the QR Code displayed in the terminal to authenticate the bot with WhatsApp Web.
+6. Scan the QR Code displayed in the terminal to authenticate the bot with WhatsApp Web.
 
-## Directory Structure
+## Configuration (`config.json`)
 
-The bot creates a directory structure to store received messages and media files:
-
-- `whatsapp-backup`: Main backup directory.
-- `chats`: Contains subfolders for each chat or group, organized by chat ID.
-- `media`: Stores all media files within each chat's folder.
-
-### Configuration (`config.json`)
-
-Example of a `config.json` file:
+Example configuration file (`config.json`):
 
 ```json
 {
-  "whisperPath": "/home/[your-path-to-whisper-binary]/bin/whisper",
-  "transcriptionGroup": "[your-user-or-grupo-to-send-transcriptions-if-not-same_chat]",
-  "chats": {
-      "group-id-1": {
-          "transcribeAudio": true,
-          "sendAudioToTranscriptGroup": true,
-          "sendTranscriptionTo": "same_chat",
-          "summarizeDocuments": true
-      },
-      "group-id-2": {
-          "summarizeDocuments": false
-      }
-  }
+    "service": "openai",
+    "openai": {
+        "model": "gpt-4o-mini"
+    },
+    "ollama": {
+        "model": "llama2",
+        "base_url": "http://localhost:11434"
+    },
+    "whisperPath": "/path/to/whisper",
+    "chats": {
+        "group-id-1": {
+            "transcribeAudio": true,
+            "sendAudioToTranscriptGroup": true,
+            "sendTranscriptionTo": "same_chat",
+            "summarizeDocuments": true
+        },
+        "group-id-2": {
+            "summarizeDocuments": false
+        }
+    }
 }
 ```
 
-#### Configuration Options
-
-- **transcribeAudio**: Automatically transcribe audio messages.
-- **sendAudioToTranscriptGroup**: Forwards audio messages to a specific transcription group.
-- **sendTranscriptionTo**: Specifies where to send the transcription (`same_chat` for the same chat, or `transcriptionGroup` for a dedicated group).
-- **summarizeDocuments**: Automatically summarizes documents.
-- **whisperPath**: Path to the Whisper executable for transcription.
-
-## Code Functionality
+## Features Overview
 
 ### Message Backup
 
-- All received messages are saved in `.json` files, maintaining a history for each chat or group.
-- Media files are stored in a `media` subfolder.
+- Saves all received messages in `.json` files, creating a history for each chat or group.
+- Media files are stored in a dedicated `media` folder within each chat's directory.
 
-### AI-Powered Audio Transcription
+### AI-Powered Transcription
 
 - Uses Whisper to transcribe `.ogg` audio files.
-- In private chats, transcribes and replies with the transcription.
-- In groups, transcribes only if configured in `config.json`.
+- Automatically transcribes audio in private chats and responds with the text.
+- In groups, transcription is enabled based on the `config.json` settings.
 
 ### AI-Powered Document Summarization
 
 - Supports PDF, DOC, and DOCX files.
-- Uses OpenAI API to generate concise summaries of document content.
-- Automatically summarizes documents in private chats; in groups, only if configured.
+- Offers a choice between using OpenAI's GPT model or the local Ollama model for summarization.
+- In private chats, documents are summarized automatically.
+- In groups, summarization is performed only if configured.
 
 ### Error Handling
 
-- **Retry Mechanism**: Ensures transcription is completed by checking for the existence of the output file, with a limit on the number of attempts.
-- **Broadcast Messages Ignored**: Automatically ignores messages from `status@broadcast` to prevent unnecessary processing.
-
-## AI Integration
-
-This bot leverages state-of-the-art AI models for text processing and understanding, including:
-- **OpenAI's GPT-4** for generating concise and accurate document summaries.
-- **Whisper AI** for high-quality transcription of audio messages, enabling seamless understanding of voice notes.
+- **Retry Mechanism**: Includes retry logic for API rate limits with exponential backoff.
+- **Ignored Status Messages**: Automatically ignores messages from `status@broadcast` to prevent unnecessary processing.
 
 ## Contributions
 
-Contributions are welcome! Feel free to open a pull request or issue to discuss changes and improvements.
+Contributions are welcome! Please submit a pull request or open an issue to discuss any changes.
 
 ## License
 

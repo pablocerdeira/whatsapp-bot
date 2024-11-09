@@ -7,6 +7,7 @@ const mammoth = require('mammoth');
 const textract = require('textract');
 const { exec } = require('child_process');
 const { Configuration, OpenAIApi } = require('openai');
+const axios = require('axios');
 
 require('dotenv').config();
 
@@ -305,33 +306,71 @@ async function handleDocumentFeatures(msg) {
     }
 }
 
-// Função para gerar resumo usando OpenAI
+// Função para gerar resumo
 async function generateSummary(text) {
+    const service = config.service || "openai";
     let attempts = 0;
     const maxAttempts = 5;
     const backoffDelay = 2000; // 2 segundos para começar, aumentando exponencialmente
 
     while (attempts < maxAttempts) {
         try {
-            const response = await openai.createChatCompletion({
-                model: "gpt-4o-mini",
-                messages: [{ role: "user", content: `Faça um resumo breve e objetivo do seguinte texto, voltado para advogados experientes, com no máximo 800 palavras, indicando também do que se trata e seus objetivos. Nunca use a palavra RESUMO em sua resposta e faça o resumo sempre menor do que o texto recebido, sem inventar nem usar nada que não esteja no texto: ${text}` }],
-                max_tokens: 800
-            });
-            return response.data.choices[0].message.content.trim();
+            if (service === "openai") {
+                const model = config.openai?.model || "gpt-4o-mini";
+                return await generateSummaryWithOpenAI(text, model);
+            } else if (service === "ollama") {
+                const model = config.ollama?.model || "llama2";
+                const baseUrl = config.ollama?.base_url || "http://localhost:11434";
+                return await generateSummaryWithOllama(text, model, baseUrl);
+            } else {
+                console.error(`Serviço de IA inválido: ${service}`);
+                return null;
+            }
         } catch (error) {
             if (error.response && error.response.status === 429) {
                 console.warn(`Rate limit exceeded. Tentativa ${attempts + 1} de ${maxAttempts}. Esperando ${backoffDelay / 1000} segundos antes de tentar novamente...`);
                 await new Promise(resolve => setTimeout(resolve, backoffDelay * (2 ** attempts))); // Exponential backoff
                 attempts++;
             } else {
-                console.error(`Erro ao gerar resumo com OpenAI: ${error.message}`);
+                console.error(`Erro ao gerar resumo com ${service}: ${error.message}`);
                 return null;
             }
         }
     }
     console.error("Máximo de tentativas atingido. Não foi possível gerar o resumo.");
     return null;
+}
+
+async function generateSummaryWithOpenAI(text, model) {
+    const response = await openai.createChatCompletion({
+        model,
+        messages: [{ role: "user", content: `Faça um resumo do texto a seguir, sem dizer que está fazendo um resumo. Tente se limitar a 800 palavras, sabendo que o público-alvo é formado por advogados experientes. Não faça nenhuma análise, apenas resuma o texto, sabendo que o resumo deve ser menor que o texto original: ${text}` }],
+        max_tokens: 800
+    });
+    return response.data.choices[0].message.content.trim();
+}
+
+async function generateSummaryWithOllama(text, model, baseUrl) {
+    const prompt = `Faça um resumo do texto a seguir, sem dizer que está fazendo um resumo. Tente se limitar a 800 palavras, sabendo que o público-alvo é formado por advogados experientes. Não faça nenhuma análise, apenas resuma o texto, sabendo que o resumo deve ser menor que o texto original: ${text}`;
+
+    try {
+        const response = await axios.post(`${baseUrl}/api/generate`, {
+            model,
+            prompt,
+            stream: false // Certifique-se de que o streaming está desativado
+        });
+
+        // Verificação e extração da resposta correta
+        if (response.data && typeof response.data.response === 'string') {
+            return response.data.response.trim();
+        } else {
+            console.error("Erro ao obter resposta da API Ollama: Formato inesperado.");
+            return null;
+        }
+    } catch (error) {
+        console.error(`Erro ao se comunicar com Ollama: ${error.message}`);
+        return null;
+    }
 }
 
 // Captura todas as mensagens, realiza backup e, para áudios, executa funções extras se configuradas
