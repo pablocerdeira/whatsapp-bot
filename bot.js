@@ -220,8 +220,11 @@ async function transcribeAndReply(msg, chatId, sendTranscriptionTo = "same_chat"
     // Caminho de saída da transcrição
     const transcriptPath = mediaFilePath.replace('.ogg', '.txt');
 
-    // Executa o Whisper com o caminho completo e direciona o arquivo de saída
-    exec(`/home/pablo.cerdeira/miniconda3/bin/whisper ${mediaFilePath} --language pt --output_format txt --output_dir ${mediaPath}`, (error) => {
+    // Obtém o caminho para o executável do Whisper a partir do config.json
+    const whisperPath = config.whisperPath || 'whisper'; // Usa 'whisper' como padrão se não estiver configurado
+
+    // Executa o Whisper com o caminho configurável
+    exec(`${whisperPath} ${mediaFilePath} --language pt --output_format txt --output_dir ${mediaPath}`, (error) => {
         if (error) {
             console.error(`Erro na transcrição: ${error.message}`);
             return;
@@ -229,25 +232,20 @@ async function transcribeAndReply(msg, chatId, sendTranscriptionTo = "same_chat"
 
         // Função para verificar a existência do arquivo de transcrição com limite de tentativas
         let attempts = 0;
-        const maxAttempts = 15; // Aumentado o limite de tentativas
-        const checkInterval = 700; // Intervalo ajustado para 700ms
+        const maxAttempts = 15;
+        const checkInterval = 700;
 
         function checkFileExists() {
             if (fs.existsSync(transcriptPath)) {
-                // Lê a transcrição gerada pelo Whisper
                 const transcript = fs.readFileSync(transcriptPath, 'utf8');
 
-                // Define o chat para enviar a transcrição
                 const sendTo = sendTranscriptionTo === "same_chat" ? chatId : config.transcriptionGroup;
-
-                // Envia a transcrição como resposta ao áudio, se "same_chat"; ou para o grupo privado
                 if (sendTranscriptionTo === "same_chat") {
                     msg.reply(`*Transcrição:* ${transcript}`);
                 } else {
                     client.sendMessage(sendTo, `*Transcrição do áudio do chat ${chatId}:* ${transcript}`);
                 }
             } else if (attempts < maxAttempts) {
-                // Aguarda e tenta novamente, aumentando o contador de tentativas
                 attempts++;
                 setTimeout(checkFileExists, checkInterval);
             } else {
