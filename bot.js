@@ -190,7 +190,7 @@ async function handleAudioFeatures(msg) {
     const chatConfig = config.chats[chatId];
 
     // Transcrição automática para todos os chats privados
-    if (isPrivateChat && msg.type === 'ptt' && msg.hasMedia) {
+    if (isPrivateChat && ['ptt', 'audio', 'ptv'].includes(msg.type) && msg.hasMedia) {
         await transcribeAndReply(msg, chatId, "same_chat");  // Transcreve e responde no mesmo chat
         return;
     }
@@ -201,7 +201,7 @@ async function handleAudioFeatures(msg) {
     }
 
     // Encaminha o áudio para o grupo de transcrição, se configurado no config.json (para grupos apenas)
-    if (chatConfig && chatConfig.sendAudioToTranscriptGroup && msg.type === 'ptt') {
+    if (chatConfig && chatConfig.sendAudioToTranscriptGroup && ['ptt', 'audio', 'ptv'].includes(msg.type)) {
         const media = await msg.downloadMedia();
         client.sendMessage(config.transcriptionGroup, media, { caption: 'Áudio encaminhado automaticamente' });
     }
@@ -301,7 +301,7 @@ async function handleDocumentFeatures(msg) {
         if (shouldSummarize) {
             const summary = await generateSummary(textContent);
             if (summary) {
-                msg.reply(`*Resumo do documento:* ${summary}`);
+                msg.reply(`*Resumo do documento (atenção, gerado por IA, pode conter erros):* ${summary}`);
             }
         }
     }
@@ -317,7 +317,7 @@ async function generateSummary(text) {
         try {
             const response = await openai.createChatCompletion({
                 model: "gpt-4o-mini",
-                messages: [{ role: "user", content: `Faça um resumo breve e objetivo do seguinte texto, com no máximo 800 palavras, indicando também do que se trata e seus objetivos. Nunca use a palavra RESUMO em sua resposta: ${text}` }],
+                messages: [{ role: "user", content: `Faça um resumo breve e objetivo do seguinte texto, voltado para advogados experientes, com no máximo 800 palavras, indicando também do que se trata e seus objetivos. Nunca use a palavra RESUMO em sua resposta e faça o resumo sempre menor do que o texto recebido, sem inventar nem usar nada que não esteja no texto: ${text}` }],
                 max_tokens: 800
             });
             return response.data.choices[0].message.content.trim();
