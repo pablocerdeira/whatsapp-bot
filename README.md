@@ -69,18 +69,19 @@ Example of a `config.json` file:
 
 ```json
 {
-    "chats": {
-        "group-id-1": {
-            "transcribeAudio": true,
-            "sendAudioToTranscriptGroup": true,
-            "sendTranscriptionTo": "same_chat",
-            "summarizeDocuments": true
-        },
-        "group-id-2": {
-            "summarizeDocuments": false
-        }
-    },
-    "whisperPath": "/path/to/whisper"
+  "whisperPath": "/home/[your-path-to-whisper-binary]/bin/whisper",
+  "transcriptionGroup": "[your-user-or-grupo-to-send-transcriptions-if-not-same_chat]",
+  "chats": {
+      "group-id-1": {
+          "transcribeAudio": true,
+          "sendAudioToTranscriptGroup": true,
+          "sendTranscriptionTo": "same_chat",
+          "summarizeDocuments": true
+      },
+      "group-id-2": {
+          "summarizeDocuments": false
+      }
+  }
 }
 ```
 

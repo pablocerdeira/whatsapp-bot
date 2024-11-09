@@ -1,5 +1,6 @@
 {
-    "transcriptionGroup": "seu-id-o-de-um-grupo-seu-para-receber-transcricoes-de-forma-privada",
+    "whisperPath": "/home/[your-path-to-whisper-binary]/bin/whisper",
+    "transcriptionGroup": "[your-user-or-grupo-to-send-transcriptions-if-not-same_chat]",
     "chats": {
         "group-id-1": {
             "transcribeAudio": true,
