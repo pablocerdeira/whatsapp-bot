@@ -5,3 +5,5 @@ node_modules
 whatsapp-backup
 config.json
 .env
+attachments
+scheduled-messages.json

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agendar Nova Mensagem</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="card mx-auto" style="max-width: 600px;">
+            <div class="card-body">
+                <h3 class="card-title">Agendar Nova Mensagem</h3>
+                <form id="scheduleForm" action="/schedule" method="POST" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="recipient" class="form-label">Destinatário</label>
+                        <input type="text" id="recipient" name="recipient" class="form-control" placeholder="Digite o nome ou ID do destinatário" autocomplete="off">
+                        <div id="recipientList" class="list-group position-absolute w-100"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="message" class="form-label">Mensagem</label>
+                        <textarea id="message" name="message" class="form-control" rows="5"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="attachment" class="form-label">Anexo</label>
+                        <input type="file" id="attachment" name="attachment" class="form-control">
+                    </div>
+                    <div class="mb-3">
+                        <label for="scheduledAt" class="form-label">Data e Hora</label>
+                        <input type="datetime-local" id="scheduledAt" name="scheduledAt" class="form-control">
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Agendar Mensagem</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        $(document).ready(function () {
+            let contacts = [];
+
+            // Carregar contatos dinamicamente
+            $.get('/api/contacts', function (data) {
+                contacts = data;
+            });
+
+            // Autocomplete manual para o campo de destinatário
+            $('#recipient').on('input', function () {
+                const query = $(this).val().toLowerCase();
+                const filteredContacts = contacts.filter(contact =>
+                    contact.name.toLowerCase().includes(query) || contact.id.toLowerCase().includes(query)
+                );
+
+                const recipientList = $('#recipientList');
+                recipientList.empty();
+
+                filteredContacts.forEach(contact => {
+                    const item = $(`
+                        <button type="button" class="list-group-item list-group-item-action">
+                            ${contact.name} (${contact.id})
+                        </button>
+                    `);
+
+                    item.on('click', function () {
+                        $('#recipient').val(contact.id);
+                        recipientList.empty();
+                    });
+
+                    recipientList.append(item);
+                });
+            });
+
+            // Ocultar a lista de sugestões ao clicar fora
+            $(document).on('click', function (e) {
+                if (!$(e.target).closest('#recipient').length) {
+                    $('#recipientList').empty();
+                }
+            });
+        });
+    </script>
+</body>
+</html>

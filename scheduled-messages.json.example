@@ -1,0 +1,18 @@
+[
+    {
+        "recipient": "5521999999999@c.us",
+        "message": "Olá, esta é uma mensagem automática com quebra de linha.\nAqui está a segunda linha.",
+        "attachment": "./attachments/sample.pdf",
+        "scheduledTime": "2024-11-10T14:00:00",
+        "status": "approved",
+        "sentAt": null
+    },
+    {
+        "recipient": "5521988888888-123456789@g.us",
+        "message": "Esta é uma mensagem para o grupo.",
+        "attachment": null,
+        "scheduledTime": "2024-11-11T09:30:00",
+        "status": "approved",
+        "sentAt": null
+    }
+]

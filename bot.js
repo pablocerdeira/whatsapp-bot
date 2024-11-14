@@ -1,4 +1,4 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
@@ -47,6 +47,10 @@ client.on('ready', async () => {
     console.log('Cliente pronto!');
     watchConfigFile();
     loadChatNames();
+
+    // Iniciar o monitoramento de agendamentos
+    watchScheduledMessages(client);
+    checkScheduledMessagesPeriodically(client);
 });
 
 // Função para carregar configurações
@@ -373,11 +377,134 @@ async function generateSummaryWithOllama(text, model, baseUrl) {
     }
 }
 
+// Função para carregar mensagens agendadas
+function loadScheduledMessages() {
+    try {
+        const data = fs.readFileSync('./scheduled-messages.json', 'utf8');
+        return JSON.parse(data);
+    } catch (error) {
+        console.error('Erro ao carregar o arquivo de mensagens agendadas:', error);
+        return [];
+    }
+}
+
+// Função para salvar mensagens agendadas
+function saveScheduledMessages(messages) {
+    try {
+        // Desativa o monitoramento temporariamente
+        fs.unwatchFile('./scheduled-messages.json');
+        fs.writeFileSync('./scheduled-messages.json', JSON.stringify(messages, null, 2), 'utf8');
+        console.log('Mensagens agendadas salvas com sucesso.');
+    } catch (error) {
+        console.error('Erro ao salvar o arquivo de mensagens agendadas:', error);
+    } finally {
+        // Reativa o monitoramento
+        watchScheduledMessages(client);
+    }
+}
+
+// Função para enviar mensagem
+async function sendMessage(client, messageData) {
+    try {
+        const { recipient, message, attachment } = messageData;
+
+        // Variável para armazenar o anexo (se houver)
+        let media = null;
+
+        // Carrega o anexo se o caminho for especificado
+        if (attachment) {
+            try {
+                media = MessageMedia.fromFilePath(attachment);
+                console.log(`Anexo carregado: ${attachment}`);
+            } catch (error) {
+                console.error(`Erro ao carregar o anexo: ${attachment}. Erro: ${error.message}`);
+                return; // Interrompe o envio se houver erro ao carregar o anexo
+            }
+        }
+
+        // Envia a mensagem com ou sem anexo
+        if (media) {
+            await client.sendMessage(recipient, media, { caption: message });
+        } else {
+            await client.sendMessage(recipient, message);
+        }
+
+        console.log(`Mensagem enviada para ${recipient}`);
+
+        // Atualiza o status da mensagem para 'sent'
+        messageData.status = 'sent';
+        messageData.sentAt = new Date().toISOString();
+    } catch (error) {
+        console.error(`Erro ao enviar mensagem para ${messageData.recipient}: ${error.message}`);
+    }
+}
+
+// Função para monitorar o arquivo de mensagens agendadas
+let isScheduledMessageProcessing = false;
+
+function watchScheduledMessages(client) {
+    if (isScheduledMessageProcessing) return; // Impede múltiplas execuções
+
+    console.log('Monitoramento de mensagens agendadas iniciado...');
+    fs.watchFile('./scheduled-messages.json', async () => {
+        console.log('Arquivo de mensagens agendadas atualizado. Verificando agendamentos...');
+
+        const messages = loadScheduledMessages();
+        const now = new Date();
+
+        for (const messageData of messages) {
+            const scheduledTime = new Date(messageData.scheduledAt);
+
+            if (messageData.status === 'approved' && scheduledTime <= now && messageData.sentAt === null) {
+                console.log(`Nova mensagem agendada encontrada:
+- Destinatário: ${messageData.recipient}
+- Hora agendada: ${messageData.scheduledAt}
+- Mensagem: ${messageData.message}`);
+
+                await sendMessage(client, messageData);
+
+                messageData.status = 'sent';
+                messageData.sentAt = new Date().toISOString();
+            }
+        }
+
+        saveScheduledMessages(messages);
+    });
+}
+
+function checkScheduledMessagesPeriodically(client) {
+    setInterval(async () => {
+        if (isScheduledMessageProcessing) return; // Evita múltiplas execuções simultâneas
+
+        console.log('Verificação periódica de mensagens agendadas...');
+        const messages = loadScheduledMessages();
+        const now = new Date();
+
+        for (const messageData of messages) {
+            const scheduledTime = new Date(messageData.scheduledAt);
+
+            if (messageData.status === 'approved' && scheduledTime <= now && messageData.sentAt === null) {
+                console.log(`Mensagem agendada encontrada para envio:
+- Destinatário: ${messageData.recipient}
+- Hora agendada: ${messageData.scheduledAt}
+- Mensagem: ${messageData.message}`);
+
+                await sendMessage(client, messageData);
+
+                messageData.status = 'sent';
+                messageData.sentAt = new Date().toISOString();
+            }
+        }
+
+        saveScheduledMessages(messages);
+    }, 60000); // Verificação a cada minuto
+}
+
 // Captura todas as mensagens, realiza backup e, para áudios, executa funções extras se configuradas
 client.on('message_create', async msg => {
-    await backupMessage(msg);        // Realiza o backup de todas as mensagens
-    await handleAudioFeatures(msg);   // Executa funções extras para áudios, se configuradas
-    await handleDocumentFeatures(msg); // Resumo de documentos
+    await backupMessage(msg);                       // Realiza o backup de todas as mensagens
+    await handleAudioFeatures(msg);                 // Executa funções extras para áudios, se configuradas
+    await handleDocumentFeatures(msg);              // Resumo de documentos
 });
 
 client.on('authenticated', () => {

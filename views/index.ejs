@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mensagens Agendadas</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="mb-4">Mensagens Agendadas</h1>
+        <a href="/new" class="btn btn-primary mb-4">Novo Agendamento</a>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Destinatário</th>
+                    <th>Mensagem</th>
+                    <th>Anexo</th>
+                    <th>Data e Hora</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% messages.forEach(msg => { %>
+                    <tr>
+                        <td><%= msg.recipient %></td>
+                        <td><%= msg.message %></td>
+                        <td><%= msg.attachment || 'Nenhum' %></td>
+                        <td><%= msg.scheduledAt %></td>
+                        <td><%= msg.status %></td>
+                    </tr>
+                <% }) %>
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
