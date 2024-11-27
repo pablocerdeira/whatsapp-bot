@@ -190,30 +190,41 @@ async function handleAudioFeatures(msg) {
         return;
     }
 
-    const chat = await client.getChatById(chatId);
-    const isPrivateChat = !chat.isGroup;  // Verifica se é um chat privado (1:1)
-    const chatConfig = config.chats[chatId];
+    // Verifica se é um grupo pelo ID do chat
+    const isGroup = chatId.includes('@g.us');
+    const isPrivateChat = !isGroup;
 
-    // Transcrição automática para todos os chats privados
-    if (isPrivateChat && ['ptt', 'audio', 'ptv'].includes(msg.type) && msg.hasMedia) {
-        await transcribeAndReply(msg, chatId, "same_chat");  // Transcreve e responde no mesmo chat
+    // Verifica se é um áudio
+    if (!['ptt', 'audio', 'ptv'].includes(msg.type) || !msg.hasMedia) {
         return;
     }
 
-    // Para grupos, verifica configurações extras para áudios recebidos de outros (apenas se o grupo tiver configuração específica)
-    if (!isPrivateChat && (!chatConfig || msg.type !== 'ptt' || !msg.hasMedia)) {
-        return;  // Apenas processa áudios (ptt) de grupos com configuração extra
+    // Para chats privados, sempre transcreve
+    if (isPrivateChat) {
+        console.log(`Transcrevendo áudio para chat privado ${chatId}`);
+        await transcribeAndReply(msg, chatId, "same_chat");
+        return;
     }
 
-    // Encaminha o áudio para o grupo de transcrição, se configurado no config.json (para grupos apenas)
-    if (chatConfig && chatConfig.sendAudioToTranscriptGroup && ['ptt', 'audio', 'ptv'].includes(msg.type)) {
+    // Para grupos, primeiro verifica se está configurado no config.json
+    if (!config.chats || !config.chats[chatId]) {
+        console.log(`Áudio ignorado: o grupo ${chatId} não está configurado no config.json`);
+        return;
+    }
+
+    // Obtém a configuração do grupo
+    const chatConfig = config.chats[chatId];
+
+    // Processa o áudio de acordo com as configurações do grupo
+    if (chatConfig.sendAudioToTranscriptGroup && config.transcriptionGroup) {
+        console.log(`Encaminhando áudio do grupo ${chatId} para grupo de transcrição`);
         const media = await msg.downloadMedia();
-        client.sendMessage(config.transcriptionGroup, media, { caption: 'Áudio encaminhado automaticamente' });
+        await client.sendMessage(config.transcriptionGroup, media, { caption: 'Áudio encaminhado automaticamente' });
     }
 
-    // Transcrição do áudio para grupos, se configurado no config.json
-    if (chatConfig && chatConfig.transcribeAudio) {
-        await transcribeAndReply(msg, chatId, chatConfig.sendTranscriptionTo);
+    if (chatConfig.transcribeAudio) {
+        console.log(`Transcrevendo áudio para grupo ${chatId}`);
+        await transcribeAndReply(msg, chatId, chatConfig.sendTranscriptionTo || "same_chat");
     }
 }
 
@@ -266,20 +277,42 @@ async function transcribeAndReply(msg, chatId, sendTranscriptionTo = "same_chat"
 // Função para processar documentos e gerar resumo
 async function handleDocumentFeatures(msg) {
     const chatId = msg.fromMe ? msg.to : msg.from;
-    const chat = await client.getChatById(chatId);
-    const isPrivateChat = !chat.isGroup;
-    const chatConfig = config.chats[chatId];
+    
+    // Verifica se é um grupo pelo ID do chat (mais confiável que usar chat.isGroup)
+    const isGroup = chatId.includes('@g.us');
+    const isPrivateChat = !isGroup;
 
-    // Verifica se é um documento PDF, DOC ou DOCX
+    // Log inicial para debug
+    console.log(`Processando documento para ${isGroup ? 'grupo' : 'chat privado'} ${chatId}`);
+
+    // Se for um grupo, verifica se está no config.json e se tem summarizeDocuments: true
+    if (isGroup) {
+        // Verifica se o grupo está configurado no config.json
+        if (!config.chats[chatId]) {
+            console.log(`Documento ignorado: o grupo ${chatId} não está configurado no config.json`);
+            return;
+        }
+
+        // Verifica se summarizeDocuments está explicitamente configurado como true
+        if (config.chats[chatId].summarizeDocuments !== true) {
+            console.log(`Documento ignorado: summarizeDocuments não está habilitado para o grupo ${chatId}`);
+            return;
+        }
+    }
+
+    // Verifica se a mensagem contém um documento elegível
     if (msg.hasMedia && ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'].includes(msg._data.mimetype)) {
+        console.log(`Iniciando processamento do documento`);
+        
         const media = await msg.downloadMedia();
         const filePath = path.join(BACKUP_PATH, chatId, 'media', `${msg.id._serialized}.${media.mimetype.split('/')[1]}`);
-        
+
         // Salva o documento temporariamente
         fs.writeFileSync(filePath, media.data, { encoding: 'base64' });
 
         let textContent;
         try {
+            // Extração de texto com base no tipo de documento
             if (media.mimetype === 'application/pdf') {
                 const data = await pdfParse(fs.readFileSync(filePath));
                 textContent = data.text;
@@ -294,18 +327,15 @@ async function handleDocumentFeatures(msg) {
                     });
                 });
             }
-        } catch (error) {
-            console.error(`Erro ao extrair texto do documento: ${error.message}`);
-            return;
-        }
 
-        // Configurações para resumos em conversas privadas e grupos
-        const shouldSummarize = isPrivateChat || (chatConfig && chatConfig.summarizeDocuments);
-        if (shouldSummarize) {
+            // Gera o resumo
             const summary = await generateSummary(textContent);
             if (summary) {
+                console.log(`Enviando resumo para ${chatId}`);
                 msg.reply(`*Resumo do documento (atenção, gerado por IA, pode conter erros):* ${summary}`);
             }
+        } catch (error) {
+            console.error(`Erro ao processar documento para ${chatId}: ${error.message}`);
         }
     }
 }
