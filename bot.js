@@ -1,4 +1,11 @@
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
+// Choose Puppeteer implementation: prefer puppeteer-core + system Chrome to reduce memory,
+// fallback to full puppeteer if no external Chrome path is provided.
+// Puppeteer-core with system Chrome for low memory usage
+const puppeteer = require('puppeteer-core');
+// Chrome executable (env overrides default path)
+const browserExecPath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable';
+console.log(`${new Date().toISOString()} [init] Puppeteer executable: ${browserExecPath}`);
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
@@ -9,6 +16,13 @@ const { exec } = require('child_process');
 const { Configuration, OpenAIApi } = require('openai');
 const axios = require('axios');
 
+// Global error handlers to surface unhandled errors, especially on newer Node versions
+process.on('unhandledRejection', (reason, promise) => {
+    console.error(`${new Date().toISOString()} [unhandledRejection]`, reason);
+});
+process.on('uncaughtException', (error) => {
+    console.error(`${new Date().toISOString()} [uncaughtException]`, error.stack || error);
+});
 require('dotenv').config();
 
 let config = loadConfig();
@@ -20,21 +34,19 @@ const configuration = new Configuration({
 });
 const openai = new OpenAIApi(configuration);
 
+// Initialize WhatsApp client, explicitly pointing to Puppeteer's Chromium for Node22 compatibility
+// Initialize WhatsApp client with puppeteer-core
 const client = new Client({
-    authStrategy: new LocalAuth({ clientId: "client-one" }),
+    authStrategy: new LocalAuth({ clientId: 'client-one' }),
     puppeteer: {
+        executablePath: browserExecPath,
         headless: true,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--single-process',
-            '--disable-gpu'
+            '--disable-dev-shm-usage'
         ],
-        timeout: 60000
+        timeout: 120000
     }
 });
 
