@@ -15,6 +15,7 @@ const textract = require('textract');
 const { exec } = require('child_process');
 const { Configuration, OpenAIApi } = require('openai');
 const axios = require('axios');
+const _ = require('lodash');
 
 // Global error handlers to surface unhandled errors, especially on newer Node versions
 process.on('unhandledRejection', (reason, promise) => {
@@ -285,7 +286,11 @@ async function handleDocumentFeatures(msg) {
 
     console.log(`${new Date().toISOString()} [doc] Início do processamento de documento para ${chatId}`);
 
-    if (isGroup) {
+    // Processar documentos para chats privados sempre
+    if (isPrivateChat) {
+        console.log(`${new Date().toISOString()} [doc] Processando documento para chat privado ${chatId}`);
+    } else if (isGroup) {
+        // Verificar configuração para grupos
         if (!config.chats[chatId]) {
             console.log(`${new Date().toISOString()} [doc] Grupo ${chatId} não configurado no config.json`);
             return;
@@ -332,72 +337,78 @@ async function handleDocumentFeatures(msg) {
     }
 }
 
+// Recursively render templates in strings within objects/arrays
+function renderTemplate(str, context) {
+  return str.replace(/{{\s*(\w+)\s*}}/g, (_, key) => context[key] || '');
+}
+function renderObject(obj, context) {
+  if (typeof obj === 'string') return renderTemplate(obj, context);
+  if (Array.isArray(obj)) return obj.map(item => renderObject(item, context));
+    if (obj && typeof obj === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) {
+      let val = renderObject(v, context);
+      // convert numeric strings to numbers
+      if (typeof val === 'string') {
+        if (/^\d+$/.test(val)) val = Number(val);
+        else if (/^\d+\.\d+$/.test(val)) val = parseFloat(val);
+      }
+      out[k] = val;
+    }
+    return out;
+  }
+  return obj;
+}
+
+/**
+ * Generate summary for given text using configured generic HTTP provider in config.services
+ */
 async function generateSummary(text) {
-    const service = config.service || "openai";
-    let attempts = 0;
-    const maxAttempts = 5;
-    const backoffDelay = 2000;
-
-    console.log(`${new Date().toISOString()} [doc] Gerando resumo com serviço: ${service}`);
-
-    while (attempts < maxAttempts) {
-        try {
-            if (service === "openai") {
-                const model = config.openai?.model || "gpt-4o-mini";
-                return await generateSummaryWithOpenAI(text, model);
-            } else if (service === "ollama") {
-                const model = config.ollama?.model || "llama2";
-                const baseUrl = config.ollama?.base_url || "http://localhost:11434";
-                return await generateSummaryWithOllama(text, model, baseUrl);
-            } else {
-                console.error(`${new Date().toISOString()} [doc] Serviço de IA inválido: ${service}`);
-                return null;
-            }
-        } catch (error) {
-            if (error.response && error.response.status === 429) {
-                console.warn(`${new Date().toISOString()} [doc] Rate limit da IA. Tentativa ${attempts + 1}`);
-                await new Promise(resolve => setTimeout(resolve, backoffDelay * (2 ** attempts)));
-                attempts++;
-            } else {
-                console.error(`${new Date().toISOString()} [doc] Erro na geração do resumo: ${error.message}`);
-                return null;
-            }
-        }
-    }
-    console.error(`${new Date().toISOString()} [doc] Falha após ${maxAttempts} tentativas. Resumo não gerado.`);
+  const svcName = config.service;
+  const svc = _.get(config, ['services', svcName]);
+  if (!svc || !svc.request) {
+    console.error(`${new Date().toISOString()} [doc] Service not configured: ${svcName}`);
     return null;
-}
-
-async function generateSummaryWithOpenAI(text, model) {
-    const response = await openai.createChatCompletion({
-        model,
-        messages: [{ role: "user", content: `Faça um resumo do texto a seguir, sem dizer que está fazendo um resumo. Tente se limitar a 800 palavras, sabendo que o público-alvo é formado por advogados experientes. Não faça nenhuma análise, apenas resuma o texto, sabendo que o resumo deve ser menor que o texto original: ${text}` }],
-        max_tokens: 800
-    });
-    return response.data.choices[0].message.content.trim();
-}
-
-async function generateSummaryWithOllama(text, model, baseUrl) {
-    const prompt = `Faça um resumo do texto a seguir, sem dizer que está fazendo um resumo. Tente se limitar a 800 palavras, sabendo que o público-alvo é formado por advogados experientes. Não faça nenhuma análise, apenas resuma o texto, sabendo que o resumo deve ser menor que o texto original: ${text}`;
-
+  }
+  const req = svc.request;
+  const attempts = svc.maxAttempts || 3;
+  const backoff = svc.backoffDelay || 1000;
+  console.log(`${new Date().toISOString()} [doc] Summarizing via '${svcName}'`);
+  for (let i = 0; i < attempts; i++) {
     try {
-        const response = await axios.post(`${baseUrl}/api/generate`, {
-            model,
-            prompt,
-            stream: false
-        });
-
-        if (response.data && typeof response.data.response === 'string') {
-            return response.data.response.trim();
-        } else {
-            console.error(`${new Date().toISOString()} [doc] Formato inesperado da resposta do Ollama`);
-            return null;
-        }
-    } catch (error) {
-        console.error(`${new Date().toISOString()} [doc] Erro ao se comunicar com Ollama: ${error.message}`);
-        return null;
+      // Build context for template rendering
+      const context = {
+        text,
+        model: svc.model || '',
+        apiKey: svc.apiKeyEnv ? process.env[svc.apiKeyEnv] : (svc.apiKey || process.env.OPENAI_API_KEY || ''),
+        max_tokens: svc.max_tokens || svc.maxTokens || ''
+      };
+      const url = renderTemplate(req.url, context);
+      const headers = renderObject(req.headers || {}, context);
+      const data = renderObject(req.bodyTemplate || {}, context);
+      const method = (req.method || 'post').toLowerCase();
+      console.log(`${new Date().toISOString()} [doc] Summary request to URL: ${url}`);
+      console.log(`${new Date().toISOString()} [doc] Headers: ${JSON.stringify(headers)}`);
+      console.log(`${new Date().toISOString()} [doc] Body: ${JSON.stringify(data).slice(0,200)}`);
+      const resp = await axios({ method, url, headers, data });
+      console.log(`${new Date().toISOString()} [doc] Raw summary response: ${JSON.stringify(resp.data).slice(0,200)}`);
+      const result = svc.responseKey ? _.get(resp.data, svc.responseKey) : resp.data;
+      return typeof result === 'string' ? result.trim() : result;
+    } catch (err) {
+      const status = err.response?.status;
+      if (status === 429 && i < attempts - 1) {
+        console.warn(`${new Date().toISOString()} [doc] Rate limited, retrying ${i + 1}`);
+        await new Promise(r => setTimeout(r, backoff * Math.pow(2, i)));
+        continue;
+      }
+      console.error(`${new Date().toISOString()} [doc] Error generating summary: ${err.message}`);
+      return null;
     }
+  }
+  console.error(`${new Date().toISOString()} [doc] All ${attempts} summary attempts failed for '${svcName}'`);
+  return null;
 }
+
 
 // Função para carregar mensagens agendadas
 function loadScheduledMessages() {
